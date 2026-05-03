@@ -1,0 +1,24 @@
+# 日志和数据文件
+logs/
+data/
+*.log
+
+# 临时和缓存
+tmp/
+/tmp/
+*.tmp
+
+# 敏感信息 - 绝不上传
+*.token
+*.key
+*_secret*.txt
+passwords.txt
+credentials*
+
+# 虚拟环境
+venv/
+node_modules/
+
+# 系统文件
+.DS_Store
+Thumbs.db
