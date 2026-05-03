@@ -3,11 +3,11 @@ name: 🛡️ 归墟督察官
 on:
   schedule:
     # 监督时间 (UTC) = 北京时间 - 8
-    # 12:00 → 04:00 UTC — 新闻+文案检查
-    # 16:00 → 08:00 UTC — 下午新闻检查  
+    # 11:00 → 03:00 UTC — 剪视频提醒！
+    # 16:00 → 08:00 UTC — 下午新闻检查
     # 18:00 → 10:00 UTC — 网站更新检查
     # 22:00 → 14:00 UTC — 日终审计
-    - cron: '0 4,8,10,14 * * *'
+    - cron: '0 3,8,10,14 * * *'
   workflow_dispatch:
 
 jobs:
@@ -25,8 +25,6 @@ jobs:
           TOTAL=$(git log --oneline --after="$TODAY" --before="$(date -u -d '+1 day' +%Y-%m-%d)T23:59:59" 2>/dev/null | wc -l)
           echo "今日提交: $TOTAL"
           echo "commits=$TOTAL" >> $GITHUB_OUTPUT
-          
-          # 最近一次提交
           LAST_MSG=$(git log --oneline -1 2>/dev/null)
           echo "最近: $LAST_MSG"
           echo "last_msg=$LAST_MSG" >> $GITHUB_OUTPUT
@@ -37,34 +35,36 @@ jobs:
           echo "网站状态: $HTTP"
           echo "site_status=$HTTP" >> $GITHUB_ENV
 
-      - name: ⏰ 时间判定 + 告警生成
+      - name: ⏰ 时间判定 + 消息生成
         id: verdict
         run: |
           HOUR=$(date -u +%H)
           COMMITS=${{ steps.check.outputs.commits }}
           SITE="${{ env.site_status }}"
-          
+
           case $HOUR in
-            04) JOB="📰 12:00新闻+文案" ;;
-            08) JOB="📰 16:00新闻推送" ;;
-            10) JOB="🌐 18:00网站更新" ;;
-            14) JOB="📋 22:00日终审计" ;;
-            *) JOB="⏰ 例行检查" ;;
+            3)
+              MSG="⏰ 11:00了归墟！今天的视频文案出了吗？快动手剪视频！"
+              ;;
+            8)
+              MSG="⏰ 16:00了归墟！下午的新闻推送了吗？快检查！"
+              [ "$COMMITS" -eq 0 ] && MSG="$MSG ⚠️今天还没任何提交，你在干啥？"
+              ;;
+            10)
+              MSG="⏰ 18:00了归墟！今天的网站更新做了吗？快发布文章！"
+              [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && MSG="$MSG ⚠️网站状态异常($SITE)"
+              ;;
+            14)
+              ALERTS=""
+              [ "$COMMITS" -eq 0 ] && ALERTS="$ALERTS ⚠️今天一整天没干活！"
+              [ -n "$ALERTS" ] && MSG="⏰ 22:00日终审计！$ALERTS" || MSG="⏰ 22:00日终审计 ✅今天有提交，正常"
+              ;;
+            *) MSG="⏰ 例行检查，归墟在不在？" ;;
           esac
-          
-          ALERTS=""
-          [ "$COMMITS" -eq 0 ] && ALERTS="$ALERTS ⚠️今天还没提交任何代码，归墟在睡觉？"
-          [ "$HOUR" = "10" ] && [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && ALERTS="$ALERTS ⚠️网站状态异常($SITE)"
-          
-          if [ -n "$ALERTS" ]; then
-            echo "MSG=$JOB$ALERTS" >> $GITHUB_OUTPUT
-            echo "need_alarm=true" >> $GITHUB_OUTPUT
-          else
-            echo "need_alarm=false" >> $GITHUB_OUTPUT
-          fi
+
+          echo "MSG=$MSG" >> $GITHUB_OUTPUT
 
       - name: 📤 发通知到Telegram
-        if: steps.verdict.outputs.need_alarm == 'true'
         env:
           BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TG_CHAT_ID }}
