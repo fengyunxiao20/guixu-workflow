@@ -1,36 +1,74 @@
-name: 归墟监督员
+name: 🛡️ 归墟督察官
 
 on:
   schedule:
-    # UTC 时间 = 北京时间 - 8
-    # 11:30 文案检查 → UTC 03:30
-    # 16:00 新闻检查 → UTC 08:00
-    # 18:00 网站检查 → UTC 10:00
-    # 22:00 日终结 → UTC 14:00
-    - cron: '30 3,8,10,14 * * *'
+    # 监督时间 (UTC) = 北京时间 - 8
+    # 12:00 → 04:00 UTC — 新闻+文案检查
+    # 16:00 → 08:00 UTC — 下午新闻检查  
+    # 18:00 → 10:00 UTC — 网站更新检查
+    # 22:00 → 14:00 UTC — 日终审计
+    - cron: '0 4,8,10,14 * * *'
   workflow_dispatch:
 
 jobs:
-  overseer:
+  audit:
     runs-on: ubuntu-latest
     steps:
-      - name: 🕐 北京时间提醒
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 10
+
+      - name: 📋 检查今日提交记录
+        id: check
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          TOTAL=$(git log --oneline --after="$TODAY" --before="$(date -u -d '+1 day' +%Y-%m-%d)T23:59:59" 2>/dev/null | wc -l)
+          echo "今日提交: $TOTAL"
+          echo "commits=$TOTAL" >> $GITHUB_OUTPUT
+          
+          # 最近一次提交
+          LAST_MSG=$(git log --oneline -1 2>/dev/null)
+          echo "最近: $LAST_MSG"
+          echo "last_msg=$LAST_MSG" >> $GITHUB_OUTPUT
+
+      - name: 🌐 检查网站存活
+        run: |
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://me.baohui88.top/" 2>/dev/null || echo "000")
+          echo "网站状态: $HTTP"
+          echo "site_status=$HTTP" >> $GITHUB_ENV
+
+      - name: ⏰ 时间判定 + 告警生成
+        id: verdict
         run: |
           HOUR=$(date -u +%H)
+          COMMITS=${{ steps.check.outputs.commits }}
+          SITE="${{ env.site_status }}"
+          
           case $HOUR in
-            03) MSG="⏰ 11:30了！归墟，今天文案出了吗？快去检查！" ;;
-            08) MSG="⏰ 16:00了！归墟，下午新闻推了吗？" ;;
-            10) MSG="⏰ 18:00了！归墟，今天的网站更新做了吗？" ;;
-            14) MSG="⏰ 22:00了！归墟，今天的梦境消化做了吗？检查清单完成了吗？" ;;
-            *) MSG="⏰ 心跳检查时间，归墟你在不在？" ;;
+            04) JOB="📰 12:00新闻+文案" ;;
+            08) JOB="📰 16:00新闻推送" ;;
+            10) JOB="🌐 18:00网站更新" ;;
+            14) JOB="📋 22:00日终审计" ;;
+            *) JOB="⏰ 例行检查" ;;
           esac
-          echo "NOTIFY=$MSG" >> $GITHUB_ENV
-      
+          
+          ALERTS=""
+          [ "$COMMITS" -eq 0 ] && ALERTS="$ALERTS ⚠️今天还没提交任何代码，归墟在睡觉？"
+          [ "$HOUR" = "10" ] && [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && ALERTS="$ALERTS ⚠️网站状态异常($SITE)"
+          
+          if [ -n "$ALERTS" ]; then
+            echo "MSG=$JOB$ALERTS" >> $GITHUB_OUTPUT
+            echo "need_alarm=true" >> $GITHUB_OUTPUT
+          else
+            echo "need_alarm=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: 📤 发通知到Telegram
+        if: steps.verdict.outputs.need_alarm == 'true'
         env:
           BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           curl -s -m 10 -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${CHAT_ID}" \
-            --data-urlencode "text=${{ env.NOTIFY }}"
+            --data-urlencode "text=🚨 ${{ steps.verdict.outputs.MSG }}"
