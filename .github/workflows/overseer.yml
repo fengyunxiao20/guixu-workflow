@@ -2,69 +2,61 @@ name: 🛡️ 归墟督察官
 
 on:
   schedule:
-    # 监督时间 (UTC) = 北京时间 - 8
-    # 11:00 → 03:00 UTC — 剪视频提醒！
-    # 16:00 → 08:00 UTC — 下午新闻检查
-    # 18:00 → 10:00 UTC — 网站更新检查
-    # 22:00 → 14:00 UTC — 日终审计
-    - cron: '0 3,8,10,14 * * *'
+    # 剪视频提醒 (UTC 03:00 = 北京时间 11:00)
+    - cron: '0 3 * * *'
+    # 网站更新提醒 (UTC 10:00 = 北京时间 18:00)
+    - cron: '0 10 * * *'
+    # 日终审计 (UTC 14:00 = 北京时间 22:00)
+    - cron: '0 14 * * *'
   workflow_dispatch:
 
 jobs:
-  audit:
+  remind:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 10
+          fetch-depth: 5
 
-      - name: 📋 检查今日提交记录
+      - name: 📋 检查今日提交
         id: check
         run: |
           TODAY=$(date -u +%Y-%m-%d)
-          TOTAL=$(git log --oneline --after="$TODAY" --before="$(date -u -d '+1 day' +%Y-%m-%d)T23:59:59" 2>/dev/null | wc -l)
-          echo "今日提交: $TOTAL"
+          TOTAL=$(git log --oneline --after="$TODAY" 2>/dev/null | wc -l)
           echo "commits=$TOTAL" >> $GITHUB_OUTPUT
-          LAST_MSG=$(git log --oneline -1 2>/dev/null)
-          echo "最近: $LAST_MSG"
-          echo "last_msg=$LAST_MSG" >> $GITHUB_OUTPUT
 
-      - name: 🌐 检查网站存活
+      - name: 🌐 检查网站存活 (仅18:00)
+        if: ${{ github.event.schedule == '0 10 * * *' || github.event_name == 'workflow_dispatch' }}
         run: |
           HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://me.baohui88.top/" 2>/dev/null || echo "000")
-          echo "网站状态: $HTTP"
           echo "site_status=$HTTP" >> $GITHUB_ENV
 
-      - name: ⏰ 时间判定 + 消息生成
+      - name: ⏰ 生成消息
         id: verdict
         run: |
           HOUR=$(date -u +%H)
           COMMITS=${{ steps.check.outputs.commits }}
           SITE="${{ env.site_status }}"
+          BEIJING_TIME=$(date -u -d '+8 hours' +%H:%M)
 
           case $HOUR in
             3)
-              MSG="⏰ 11:00了归墟！今天的视频文案出了吗？快动手剪视频！"
-              ;;
-            8)
-              MSG="⏰ 16:00了归墟！下午的新闻推送了吗？快检查！"
-              [ "$COMMITS" -eq 0 ] && MSG="$MSG ⚠️今天还没任何提交，你在干啥？"
+              MSG="⏰ 北京时间${BEIJING_TIME}！归墟，今天的视频搞了没？快去写文案剪片子！"
               ;;
             10)
-              MSG="⏰ 18:00了归墟！今天的网站更新做了吗？快发布文章！"
-              [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && MSG="$MSG ⚠️网站状态异常($SITE)"
+              MSG="⏰ 北京时间${BEIJING_TIME}！今天的网站文章写了吗？登陆me.baohui88.top发文章去！"
+              [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && MSG="$MSG\n⚠️ 网站状态异常(${SITE})，检查一下！"
               ;;
             14)
-              ALERTS=""
-              [ "$COMMITS" -eq 0 ] && ALERTS="$ALERTS ⚠️今天一整天没干活！"
-              [ -n "$ALERTS" ] && MSG="⏰ 22:00日终审计！$ALERTS" || MSG="⏰ 22:00日终审计 ✅今天有提交，正常"
+              MSG="⏰ 北京时间${BEIJING_TIME}日终审计。"
+              [ "$COMMITS" -eq 0 ] && MSG="$MSG 今天一个提交都没有！归墟你今天偷懒了是吧？" || MSG="$MSG 今天提交了${COMMITS}次，还行。晚安。"
               ;;
-            *) MSG="⏰ 例行检查，归墟在不在？" ;;
+            *) MSG="⏰ 归墟，到点该干活了！" ;;
           esac
 
           echo "MSG=$MSG" >> $GITHUB_OUTPUT
 
-      - name: 📤 发通知到Telegram
+      - name: 📤 发通知
         env:
           BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
           CHAT_ID: ${{ secrets.TG_CHAT_ID }}
