@@ -1,0 +1,36 @@
+name: 归墟监督员
+
+on:
+  schedule:
+    # UTC 时间 = 北京时间 - 8
+    # 11:30 文案检查 → UTC 03:30
+    # 16:00 新闻检查 → UTC 08:00
+    # 18:00 网站检查 → UTC 10:00
+    # 22:00 日终结 → UTC 14:00
+    - cron: '30 3,8,10,14 * * *'
+  workflow_dispatch:
+
+jobs:
+  overseer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🕐 北京时间提醒
+        run: |
+          HOUR=$(date -u +%H)
+          case $HOUR in
+            03) MSG="⏰ 11:30了！归墟，今天文案出了吗？快去检查！" ;;
+            08) MSG="⏰ 16:00了！归墟，下午新闻推了吗？" ;;
+            10) MSG="⏰ 18:00了！归墟，今天的网站更新做了吗？" ;;
+            14) MSG="⏰ 22:00了！归墟，今天的梦境消化做了吗？检查清单完成了吗？" ;;
+            *) MSG="⏰ 心跳检查时间，归墟你在不在？" ;;
+          esac
+          echo "NOTIFY=$MSG" >> $GITHUB_ENV
+      
+      - name: 📤 发通知到Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: |
+          curl -s -m 10 -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT_ID}" \
+            --data-urlencode "text=${{ env.NOTIFY }}"
