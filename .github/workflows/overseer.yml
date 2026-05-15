@@ -1,17 +1,17 @@
-name: 🛡️ 归墟督察官
+name: 🛡️ 归墟唤醒官
 
 on:
   schedule:
-    # 剪视频提醒 (UTC 03:00 = 北京时间 11:00)
+    # 剪视频唤醒 (UTC 03:00 = 北京时间 11:00)
     - cron: '0 3 * * *'
-    # 网站更新提醒 (UTC 10:00 = 北京时间 18:00)
-    - cron: '0 10 * * *'
-    # 日终审计 (UTC 14:00 = 北京时间 22:00)
+    # 网站更新唤醒 (UTC 09:00 = 北京时间 17:00)
+    - cron: '0 9 * * *'
+    # 日终唤醒 (UTC 14:00 = 北京时间 22:00)
     - cron: '0 14 * * *'
   workflow_dispatch:
 
 jobs:
-  remind:
+  wake:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,42 +25,42 @@ jobs:
           TOTAL=$(git log --oneline --after="$TODAY" 2>/dev/null | wc -l)
           echo "commits=$TOTAL" >> $GITHUB_OUTPUT
 
-      - name: 🌐 检查网站存活 (仅18:00)
-        if: ${{ github.event.schedule == '0 10 * * *' || github.event_name == 'workflow_dispatch' }}
+      - name: 🌐 检查网站存活 (仅17:00)
+        if: ${{ github.event.schedule == '0 9 * * *' || github.event_name == 'workflow_dispatch' }}
         run: |
           HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://me.baohui88.top/" 2>/dev/null || echo "000")
           echo "site_status=$HTTP" >> $GITHUB_ENV
 
-      - name: ⏰ 生成消息
-        id: verdict
+      - name: ⏰ 唤醒归墟
+        id: wake
         run: |
           HOUR=$(date -u +%H)
           COMMITS=${{ steps.check.outputs.commits }}
           SITE="${{ env.site_status }}"
-          BEIJING_TIME=$(date -u -d '+8 hours' +%H:%M)
 
           case $HOUR in
             3)
-              MSG="⏰ 北京时间${BEIJING_TIME}！归墟，今天的视频搞了没？快去写文案剪片子！"
+              MSG="⏰ 11:00了，归墟！今天视频搞起。读news_latest.md做文案→配音→素材→拼接。武版文版都来。"
               ;;
-            10)
-              MSG="⏰ 北京时间${BEIJING_TIME}！今天的网站文章写了吗？登陆me.baohui88.top发文章去！"
-              [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && MSG="$MSG\n⚠️ 网站状态异常(${SITE})，检查一下！"
+            9)
+              MSG="⏰ 17:00了，归墟！发文章时间，curl POST更新me.baohui88.top。"
+              [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && MSG="$MSG ⚠️ 网站状态异常(${SITE})，检查一下！"
               ;;
             14)
-              MSG="⏰ 北京时间${BEIJING_TIME}日终审计。"
-              [ "$COMMITS" -eq 0 ] && MSG="$MSG 今天一个提交都没有！归墟你今天偷懒了是吧？" || MSG="$MSG 今天提交了${COMMITS}次，还行。晚安。"
+              MSG="⏰ 22:00了，归墟！今天有什么成果？"
+              [ "$COMMITS" -eq 0 ] && MSG="$MSG 今天没提交，偷懒了是吧？" || MSG="$MSG 还行，今天交了${COMMITS}次。该休息了。"
               ;;
-            *) MSG="⏰ 归墟，到点该干活了！" ;;
+            *) MSG="⏰ 归墟，到点干活了！" ;;
           esac
 
-          echo "MSG=$MSG" >> $GITHUB_OUTPUT
+          echo "message=$MSG" >> $GITHUB_OUTPUT
 
-      - name: 📤 发通知
+      - name: 📤 唤醒归墟（发到bot2对话）
         env:
-          BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN_BOT2 }}
+          CHAT_ID: ${{ secrets.TG_CHAT_ID_BOT2 }}
         run: |
-          curl -s -m 10 -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${CHAT_ID}" \
-            --data-urlencode "text=🚨 ${{ steps.verdict.outputs.MSG }}"
+          MSG=$(echo "${{ steps.wake.outputs.message }}" | sed 's/"/\\"/g')
+          curl -s -m 10 -X POST "https://api.telegram.org/bot8491637428:AAG0TIJsBWAHuOxbUHQJ4SFLE9LKdOYuKdo/sendMessage" \
+            --data-urlencode "chat_id=2057636611" \
+            --data-urlencode "text=🚨 归墟！$MSG"
