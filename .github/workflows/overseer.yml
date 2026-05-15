@@ -31,7 +31,7 @@ jobs:
           HTTP=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "https://me.baohui88.top/" 2>/dev/null || echo "000")
           echo "site_status=$HTTP" >> $GITHUB_ENV
 
-      - name: ⏰ 唤醒归墟
+      - name: ⏰ 生成唤醒指令
         id: wake
         run: |
           HOUR=$(date -u +%H)
@@ -40,25 +40,22 @@ jobs:
 
           case $HOUR in
             3)
-              MSG="⏰ 11:00了，归墟！今天视频搞起。读news_latest.md做文案→配音→素材→拼接。武版文版都来。"
+              MSG="11:00了，该剪视频了！读news_latest.md写文案→配音→素材→ffmpeg拼接。武版文版都做，Yunxi男声，结尾语「风云带你看实时」，9:16竖版。先出两个文案方案找我审核。"
               ;;
             9)
-              MSG="⏰ 17:00了，归墟！发文章时间，curl POST更新me.baohui88.top。"
-              [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && MSG="$MSG ⚠️ 网站状态异常(${SITE})，检查一下！"
+              MSG="17:00了，发文章！curl POST更新me.baohui88.top。读news_latest.md用千问写新闻综述300-500字发到分类新闻=4。"
+              [ "$SITE" != "200" ] && [ "$SITE" != "301" ] && [ "$SITE" != "302" ] && MSG="$MSG ⚠️ 网站状态异常(${SITE})，先检查！"
               ;;
             14)
-              MSG="⏰ 22:00了，归墟！今天有什么成果？"
-              [ "$COMMITS" -eq 0 ] && MSG="$MSG 今天没提交，偷懒了是吧？" || MSG="$MSG 还行，今天交了${COMMITS}次。该休息了。"
+              MSG="22:00了，日终审计。今天提交了${COMMITS}次。"把今天成果汇报给老大。""
+              [ "$COMMITS" -eq 0 ] && MSG="22:00了，今天一个提交都没有！醒醒归墟！"
               ;;
-            *) MSG="⏰ 归墟，到点干活了！" ;;
+            *) MSG="归墟，到点干活了！" ;;
           esac
 
           echo "message=$MSG" >> $GITHUB_OUTPUT
 
-      - name: 📤 唤醒归墟（发到bot2对话）
-        env:
-          BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN_BOT2 }}
-          CHAT_ID: ${{ secrets.TG_CHAT_ID_BOT2 }}
+      - name: 📤 唤醒归墟（发到自己会话）
         run: |
           MSG=$(echo "${{ steps.wake.outputs.message }}" | sed 's/"/\\"/g')
           curl -s -m 10 -X POST "https://api.telegram.org/bot8491637428:AAG0TIJsBWAHuOxbUHQJ4SFLE9LKdOYuKdo/sendMessage" \
